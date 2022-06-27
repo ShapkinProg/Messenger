@@ -3,12 +3,12 @@ import socket
 from threading import Thread
 import threading
 import json
+import sqlite3
 
 
 if __name__ == '__main__':
     SERVER = "127.0.0.1"
     PORT = 1337
-
     client = socket.socket(socket.AF_INET, socket.SOCK_STREAM) #открывание сокета, нужно будет сделать обёртку для TLS
     client.connect((SERVER, PORT))
 
@@ -27,12 +27,14 @@ if __name__ == '__main__':
                     send_login = "S" + login + " " + password
                 send_login = cryptocode.encrypt(send_login, 'key') #на всякий случай шифрование перед отправкой
                 client.sendall(bytes(send_login, 'UTF-8'))
-                ans = client.recv(4096) #ждём результат запроса
+                ans = client.recv(4096).decode() #ждём результат запроса
                 if ans == '1':
                     print("Вы успшно вошли")
                     break
                 elif ans == '-1':
                     print("Такой логин уже занят")
+                elif ans == '-2':
+                    print("Что то пошло не так, поробуйте снова")
                 else:
                     print("Неверный логин или пароль")
                     continue
@@ -48,9 +50,9 @@ if __name__ == '__main__':
         name = 'F' + name
         name = cryptocode.encrypt(name, 'key') #шифруем и отпарвляем на сервер
         client.sendall(bytes(name, 'UTF-8'))
-        ans = client.recv(4096) #ждём овтета
+        ans = client.recv(4096).decode() #ждём овтета
         if ans == "0": #не смогли найти чела точно по имени
-            ans = json.loads(ans.decode()) #json файл со всеми челиками примерно сопадающими по имени
+            ans = json.loads(client.recv(4096).decode()) #json файл со всеми челиками примерно сопадающими по имени
             if len(ans.get("users")) > 0: #если файл не пустой то печатаем этих пользователей и простим повторить попытку поиска
                 print("Результаты по запросу " + name_original + ":")
                 print(ans.get("users"))
@@ -60,6 +62,7 @@ if __name__ == '__main__':
             print("Введите сообщение:")
             while True: #начинаем диалог
                 message = input()
-                message = "M" + " " + name + message
+                message = "M" + name + " " + message
+                message = cryptocode.encrypt(message, 'key')  # шифруем и отпарвляем на сервер
                 client.sendall(bytes(message, 'UTF-8'))
 

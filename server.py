@@ -4,6 +4,9 @@ import threading
 import cryptocode
 import json
 from datetime import datetime
+import os.path
+import os
+import time
 
 
 class ClientThread(threading.Thread):
@@ -84,18 +87,32 @@ class ClientThread(threading.Thread):
                         cursor.close()
 
             elif msg[0] == "F":  # поиск пользователя по бд
-                name = msg[1:]
+                name = msg[1:msg.find(" ")]
+                login = msg[msg.find(" ") + 1:]
+
                 sqlite_connection = sqlite3.connect('resources/sqlite_python.db') # получение всех пользователей
                 cursor = sqlite_connection.cursor()
                 cursor.execute('SELECT login FROM users')
                 data = cursor.fetchall()
                 cursor.close()
+
                 users = []
                 flag = True
                 for i in data:
                     if i[0] == name:
                         self.csocket.send(bytes("1", 'UTF-8'))
                         flag = False
+                        if os.path.isfile(f'repo/{login}/{name}.json'):
+                            time.sleep(0.5)
+                            self.csocket.send(bytes("1", 'UTF-8'))
+                            time.sleep(0.5)
+                            with open(f'repo/{login}/{name}.json', "r", encoding='utf8') as file:
+                                load = json.load(file)
+                            self.csocket.send(json.dumps({"messages": load}).encode())
+                        else:
+                            self.csocket.send(bytes("0", 'UTF-8'))
+                            # load = []
+                            # self.csocket.send(json.dumps({"messages": load}).encode())
                         break
                     if i[0].find(name) != -1:
                         flag = True
@@ -104,8 +121,45 @@ class ClientThread(threading.Thread):
                     self.csocket.send(bytes("0", 'UTF-8'))
                     self.csocket.send(json.dumps({"users": users}).encode())
             elif msg[0] == "M":  # Диалог с пользователем (запись в бд на сервере)
-                name = msg[1:msg.find(" ")]
-                massage = msg[msg.find(" ") + 1:]
+                from_user = msg[1:msg.find(" ")]
+                to_user = msg[msg.find(" ") + 1:]
+                massage = self.csocket.recv(4096).decode()
+
+                if os.path.isfile(f'repo/{from_user}/{to_user}.json'):  # если диалог уже есть
+                    ###################################### для отправителя
+                    data = {
+                            'massage': massage,
+                            'data': datetime.now().strftime("%H:%M %d/%m/%Y")}
+                    with open(f'repo/{from_user}/{to_user}.json', "r", encoding='utf8') as file:
+                        load = json.load(file)
+                    load.append(data)
+                    with open(f'repo/{from_user}/{to_user}.json', 'w', encoding='utf8') as f:
+                        json.dump(load, f, indent=4, ensure_ascii=False)
+                    ###################################### для того кто получает
+                    data = {
+                            'massage': massage,
+                            'data': datetime.now().strftime("%H:%M %d/%m/%Y")}
+                    with open(f'repo/{to_user}/{from_user}.json', "r", encoding='utf8') as file:
+                        load = json.load(file)
+                    load.append(data)
+                    with open(f'repo/{to_user}/{from_user}.json', 'w', encoding='utf8') as f:
+                        json.dump(load, f, indent=4, ensure_ascii=False)
+                else:  # если диаолога ещё не было
+
+                    os.mkdir(f'repo/{from_user}')
+                    os.mkdir(f'repo/{to_user}')
+                    ###################################### для отправителя
+                    data = [{
+                             'massage': massage,
+                             'data': datetime.now().strftime("%H:%M %d/%m/%Y")}]
+                    with open(f'repo/{from_user}/{to_user}.json', 'w', encoding='utf8') as f:
+                        json.dump(data, f, indent=4, ensure_ascii=False)
+                    ###################################### для того кто получает
+                    data = [{
+                             'massage': massage,
+                             'data': datetime.now().strftime("%H:%M %d/%m/%Y")}]
+                    with open(f'repo/{to_user}/{from_user}.json', 'w', encoding='utf8') as f:
+                        json.dump(data, f, indent=4, ensure_ascii=False)
 
 
 if __name__ == '__main__':

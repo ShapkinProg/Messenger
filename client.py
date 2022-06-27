@@ -3,10 +3,12 @@ import socket
 from threading import Thread
 import threading
 import json
-import sqlite3
-
+import os.path
+from datetime import datetime
+import os
 
 if __name__ == '__main__':
+
     SERVER = "127.0.0.1"
     PORT = 1337
     client = socket.socket(socket.AF_INET, socket.SOCK_STREAM) #открывание сокета, нужно будет сделать обёртку для TLS
@@ -47,7 +49,7 @@ if __name__ == '__main__':
     while True:
         name = input()
         name_original = name
-        name = 'F' + name
+        name = 'F' + name + " " + login
         name = cryptocode.encrypt(name, 'key') #шифруем и отпарвляем на сервер
         client.sendall(bytes(name, 'UTF-8'))
         ans = client.recv(4096).decode() #ждём овтета
@@ -59,10 +61,17 @@ if __name__ == '__main__':
             else: #если файл пустой то пользователей нет
                 print("Такого пользователя нет, попытайтесь ещё раз")
         elif ans == "1": #если нашли пользователя по имени
+            mode = client.recv(4096).decode()
+            if mode == '1':
+                dialog = json.loads(client.recv(4096).decode())
+                for i in dialog.get('messages'):
+                    print(i.get('massage'))
+                # print(dialog.get('messages')[0].get('massage'))
             print("Введите сообщение:")
             while True: #начинаем диалог
                 message = input()
-                message = "M" + name + " " + message
-                message = cryptocode.encrypt(message, 'key')  # шифруем и отпарвляем на сервер
+                info = "M" + login + " " + name_original
+                info = cryptocode.encrypt(info, 'key')  # шифруем и отпарвляем на сервер
+                client.sendall(bytes(info, 'UTF-8'))
                 client.sendall(bytes(message, 'UTF-8'))
 

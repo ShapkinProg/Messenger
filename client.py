@@ -7,21 +7,33 @@ import os.path
 from datetime import datetime
 import os
 import time
+from tkinter import Tk
+from tkinter.filedialog import askopenfilename
 len_field = 60#максиамльная длина строки в чате
 half_len_field = int(len_field/2)#половина строки в чате
 
 
 def commands():
+    print("Если вы хотите посомтреть всю историю переписки используйте команду /all")
+    print("Для отправки файла отправьте команду /upload")
+    print("Для получения файла отправьте команду /download + точное название файла с его расширением(example.txt)")
     print("Для обновления переписки отправьте любое сообщение либо используйте команду /update")
     print("Для возврата назад и выбора другого пользователя напише /back")
     print("Для выхода из приложения используйте /exit")
 
 
-def print_history():#печать истории диалога
+def print_history(mode):#печать истории диалога
     dialog = json.loads(client.recv(4096).decode())  # получаем историю
     print('Вы' + ' ' * (len_field - 2 - len(name_original)) + name_original)
     print("_" * len_field)
+    count_mes = 0
+    max_count_mes = 10#изначально выводится 10 сообщений, чтобы поулчить все сообщения /all
+    if mode == 1:
+        max_count_mes = 0
     for i in dialog.get('messages'):  # выводим её
+        if count_mes < len(dialog.get('messages')) - max_count_mes and mode == 0:
+            count_mes += 1
+            continue
         if i.get("author") == name_original:#вывод в правой части консоли пользователя с которым идёт переписка
             if len(i.get('massage')) < half_len_field:
                 print(' ' * int(len_field - len(i.get('massage'))) + i.get('massage') + '\n')
@@ -117,19 +129,89 @@ if __name__ == '__main__':
             clear_console()
             mode = client.recv(4096).decode()
             if mode == '1': #если есть история диалога
-                print_history() #выводим историю
+                print_history(0) #выводим историю
             print("Чтобы узнать команды отправьте /help")
             print("Введите сообщение:")
             while True: #начинаем диалог
                 message = input()
-                if message == '/help':
-                    commands()
+                if message == '/all':
+                    clear_console()
+                    client.sendall(bytes(cryptocode.encrypt("R" + login + " " + name_original, 'key'), 'UTF-8'))
+                    mode = client.recv(4096).decode()
+                    print_history(1)
+                    print("Введите сообщение:")
+                    continue
+                elif message == '/upload':
+                    Tk().withdraw() #окно выбора файла(у меня работает почему то только в дебаге)
+                    path_to_file = askopenfilename()
+                    check = path_to_file.find('/')
+                    if check == -1: #если папка корневая
+                        name_of_file = path_to_file
+                    else:
+                        name_of_file = path_to_file[path_to_file.rfind('/')+1:]#парс имени сообщения из пути
+                    client.sendall(bytes(cryptocode.encrypt("U" + login + " "+ name_original, 'key'), 'UTF-8'))
+                    time.sleep(0.5)
+                    client.sendall(bytes(name_of_file, 'UTF-8'))
+                    mode = client.recv(4096).decode()  # 1 - всё ок, 0 - файл не уинкальный
+                    if mode == '0':
+                        print("Название файла должно быть уникальным")
+                        continue
+                    time.sleep(0.5)
+                    file_stats = os.stat(path_to_file).st_size / 1024 #отпарвляем размер файла(КБ)
+                    if file_stats != int(file_stats):
+                        file_stats = int(file_stats) + 1
+                    client.send(bytes(f'{file_stats}', 'UTF-8'))
+                    time.sleep(0.5)
+
+                    f = open(path_to_file, "rb")
+
+                    l = f.read(1024)
+                    while (l):
+                        # отправляем строку на сервер
+                        client.send(l)
+                        l = f.read(1024)
+                    time.sleep(0.5)
+                    f.close()
+                    clear_console()
+                    client.sendall(bytes(cryptocode.encrypt("R" + login + " " + name_original, 'key'), 'UTF-8'))
+                    mode = client.recv(4096).decode()
+                    print_history(0)  # выводим обновлённый диалог
+                    print("Файл удачно отправлен")
+                    print("Введите сообщение:")
+                    continue
+                elif message[:9] == '/download':  #
+                    client.sendall(bytes(cryptocode.encrypt("D" + login + " " + name_original, 'key'), 'UTF-8'))
+                    name_of_file = message[message.find(' ') + 1:]
+                    time.sleep(0.5)
+                    client.sendall(bytes(name_of_file, 'UTF-8'))
+                    mode = client.recv(4096).decode()
+                    if mode == "0":
+                        print("Такого файла нет")
+                        continue
+                    size = client.recv(4096).decode()
+                    f = open(name_of_file, 'wb')
+                    count = 0
+                    while True:
+                        l = client.recv(1024)
+                        f.write(l)
+                        count += 1
+                        if not l:
+                            break
+                        if count == int(size):
+                            break
+                    f.close()
+                    clear_console()
+                    client.sendall(bytes(cryptocode.encrypt("R" + login + " " + name_original, 'key'), 'UTF-8'))
+                    mode = client.recv(4096).decode()
+                    print_history(0)  # выводим обновлённый диалог
+                    print("Файл успешно загружен")
+                    print("Введите сообщение:")
                     continue
                 elif message == '/update':
                     client.sendall(bytes(cryptocode.encrypt("R" + login + " " + name_original, 'key'), 'UTF-8'))
                     mode = client.recv(4096).decode()
                     clear_console()
-                    print_history()  # выводим обновлённый диалог
+                    print_history(0)  # выводим обновлённый диалог
                     print("Введите сообщение:")
                     continue
                 elif message == '/back':
@@ -139,7 +221,11 @@ if __name__ == '__main__':
                 elif message == '/exit':
                     print("Надеюсь ещё увидимся. До свидания)")
                     exit()
-
+                elif message == '/help':
+                    commands()
+                    continue
+                elif message[0] == '/':
+                    print("Некорректная команда, для получения списка всех команд используйте /help")
                 info = "M" + login + " " + name_original
                 info = cryptocode.encrypt(info, 'key')  # шифруем и отпарвляем на сервер
                 client.sendall(bytes(info, 'UTF-8')) #отпаряем данные кто и кому
@@ -149,5 +235,5 @@ if __name__ == '__main__':
                 mode = client.recv(4096).decode() #ответ 1 - есть диалог 0 - диалог пустой
                 if mode == "1":
                     clear_console()
-                    print_history()#выводим обновлённый диалог
+                    print_history(0)#выводим обновлённый диалог
                     print("Введите сообщение:")

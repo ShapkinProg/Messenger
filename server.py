@@ -7,7 +7,7 @@ from datetime import datetime
 import os.path
 import os
 import time
-
+import shutil
 
 class ClientThread(threading.Thread):
     def __init__(self, clientAddress, clientsocket):  # инициализируем подклчюение
@@ -178,6 +178,106 @@ class ClientThread(threading.Thread):
                     self.csocket.send(json.dumps({"messages": load}).encode())
                 else:
                     self.csocket.send(bytes("0", 'UTF-8'))
+            elif msg[0] == 'U':
+                from_user = msg[1:msg.find(" ")]  # от кого
+                to_user = msg[msg.find(" ") + 1:]  # кому
+                name_file = self.csocket.recv(4096).decode()  # название файла
+                if os.path.isfile(f'repo/{from_user}/{to_user}.json'):  # если диалог уже есть записываем данные
+                    ###################################### для отправителя
+                    mode = 1
+                    with open(f'repo/{from_user}/{to_user}.json', "r", encoding='utf8') as file:
+                        load = json.load(file)
+                        for i in load:
+                            if i.get('massage') == name_file:
+                                self.csocket.send(bytes("0", 'UTF-8'))
+                                mode = 0
+                        if mode == 1:
+                            self.csocket.send(bytes("1", 'UTF-8'))
+                    data = {
+                            'author':from_user,
+                            'massage': name_file,
+                            'data': datetime.now().strftime("%H:%M %d/%m/%Y")}
+                    with open(f'repo/{from_user}/{to_user}.json', "r", encoding='utf8') as file:
+                        load = json.load(file)
+                    load.append(data)
+                    with open(f'repo/{from_user}/{to_user}.json', 'w', encoding='utf8') as f:
+                        json.dump(load, f, indent=4, ensure_ascii=False)
+                    ###################################### для того кто получает
+                    data = {
+                            'author': from_user,
+                            'massage': name_file,
+                            'data': datetime.now().strftime("%H:%M %d/%m/%Y")}
+                    with open(f'repo/{to_user}/{from_user}.json', "r", encoding='utf8') as file:
+                        load = json.load(file)
+                    load.append(data)
+                    with open(f'repo/{to_user}/{from_user}.json', 'w', encoding='utf8') as f:
+                        json.dump(load, f, indent=4, ensure_ascii=False)
+                else:
+                    if not os.path.exists(f'repo/{from_user}'):
+                        os.mkdir(f'repo/{from_user}')
+                        ###################################### для отправителя
+                        data = [{
+                            'author': from_user,
+                            'massage': name_file,
+                            'data': datetime.now().strftime("%H:%M %d/%m/%Y")}]
+                        with open(f'repo/{from_user}/{to_user}.json', 'w', encoding='utf8') as f:
+                            json.dump(data, f, indent=4, ensure_ascii=False)
+                    if not os.path.exists(f'repo/{to_user}'):
+                        os.mkdir(f'repo/{to_user}')
+                        ###################################### для того кто получает
+                        data = [{
+                            'author': from_user,
+                            'massage': name_file,
+                            'data': datetime.now().strftime("%H:%M %d/%m/%Y")}]
+                        with open(f'repo/{to_user}/{from_user}.json', 'w', encoding='utf8') as f:
+                            json.dump(data, f, indent=4, ensure_ascii=False)
+                size = self.csocket.recv(4096).decode()
+                count = 0
+                with open(f'repo/{from_user}/' + name_file, 'wb') as f:
+                    while True:
+                        b = self.csocket.recv(1024)
+                        f.write(b)
+                        count += 1
+                        if not b:
+                            break
+                        if count == int(size):
+                            break
+                create_file = open(f'repo/{to_user}/' + name_file, 'w')
+                create_file.write('')
+                create_file.close()
+                shutil.copy(f'repo/{from_user}/' + name_file, f'repo/{to_user}/' + name_file)
+            elif msg[0] == 'D':
+                from_user = msg[1:msg.find(" ")]  # от кого
+                to_user = msg[msg.find(" ") + 1:]  # кому
+                name_file = self.csocket.recv(4096).decode()  # название файла
+                mode = 1
+                if os.path.isfile(f'repo/{from_user}/{to_user}.json'):
+                    with open(f'repo/{from_user}/{to_user}.json', "r", encoding='utf8') as file:
+                        load = json.load(file)
+                        for i in load:
+                            if i.get('massage') == name_file:
+                                self.csocket.send(bytes("1", 'UTF-8'))
+                                mode = 0
+                                break
+                        if mode == 1:
+                            self.csocket.send(bytes("0", 'UTF-8'))
+                            continue
+                else:
+                    self.csocket.send(bytes("1", 'UTF-8'))
+                    continue
+                time.sleep(0.5)
+                file_stats = os.stat(f'repo/{to_user}/' + name_file).st_size/1024
+                if file_stats != int(file_stats):
+                    file_stats = int(file_stats)+1
+                self.csocket.send(bytes(f'{file_stats}', 'UTF-8'))
+                time.sleep(0.5)
+                f = open(f'repo/{to_user}/' + name_file, 'rb')
+                l = f.read(1024)
+                while (l):
+                    # отправляем строку на сервер
+                    self.csocket.send(l)
+                    l = f.read(1024)
+                f.close()
 
 
 if __name__ == '__main__':

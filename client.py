@@ -1,4 +1,5 @@
 import cryptocode
+import ssl
 import socket
 from threading import Thread
 import threading
@@ -11,7 +12,8 @@ from tkinter import Tk
 from tkinter.filedialog import askopenfilename
 len_field = 60#максиамльная длина строки в чате
 half_len_field = int(len_field/2)#половина строки в чате
-
+wrong_parameters = "Введены неверные параметры, попробуйте снова"
+input_message = "Введите сообщение:"
 
 def commands():
     print("Если вы хотите посомтреть всю историю переписки используйте команду /all")
@@ -69,6 +71,7 @@ if __name__ == '__main__':
     SERVER = "127.0.0.1"
     PORT = 1337
     client = socket.socket(socket.AF_INET, socket.SOCK_STREAM) #открывание сокета, нужно будет сделать обёртку для TLS
+    client = ssl.wrap_socket(client, keyfile="path/to/keyfile", certfile="path/to/certfile")    #Нужно генерировать сертификат и ключ, например с помощью OpenSSL
     client.connect((SERVER, PORT))
     while True: #вход в ситему
         print("[1] Login\n[2]Sign in")
@@ -89,7 +92,7 @@ if __name__ == '__main__':
                 ans = client.recv(4096).decode() #ждём результат запроса
                 if ans == '1':
                     clear_console()
-                    print("Вы успшно вошли")
+                    print("Вы успешно вошли")
                     break
                 elif ans == '-1':
                     clear_console()
@@ -103,10 +106,10 @@ if __name__ == '__main__':
                     continue
             else:
                 clear_console()
-                print("Введены неверные параметры, попробуйте снова")
+                print(wrong_parameters)
         except:
             clear_console()
-            print("Введены неверные параметры, попробуйте снова")
+            print(wrong_parameters)
 
     print("Введите имя пользователя которому хотите написать:") #после логина ищем чубрика которому хотим написать
     while True: #Основное 'меню' чата
@@ -131,7 +134,7 @@ if __name__ == '__main__':
             if mode == '1': #если есть история диалога
                 print_history(0) #выводим историю
             print("Чтобы узнать команды отправьте /help")
-            print("Введите сообщение:")
+            print(input_message)
             while True: #начинаем диалог
                 message = input()
                 if message == '/all':
@@ -139,7 +142,7 @@ if __name__ == '__main__':
                     client.sendall(bytes(cryptocode.encrypt("R" + login + " " + name_original, 'key'), 'UTF-8'))
                     mode = client.recv(4096).decode()
                     print_history(1)
-                    print("Введите сообщение:")
+                    print(input_message)
                     continue
                 elif message == '/upload':
                     Tk().withdraw() #окно выбора файла(у меня работает почему то только в дебаге)
@@ -177,7 +180,7 @@ if __name__ == '__main__':
                     mode = client.recv(4096).decode()
                     print_history(0)  # выводим обновлённый диалог
                     print("Файл удачно отправлен")
-                    print("Введите сообщение:")
+                    print(input_message)
                     continue
                 elif message[:9] == '/download':  #
                     client.sendall(bytes(cryptocode.encrypt("D" + login + " " + name_original, 'key'), 'UTF-8'))
@@ -205,14 +208,14 @@ if __name__ == '__main__':
                     mode = client.recv(4096).decode()
                     print_history(0)  # выводим обновлённый диалог
                     print("Файл успешно загружен")
-                    print("Введите сообщение:")
+                    print(input_message)
                     continue
                 elif message == '/update':
                     client.sendall(bytes(cryptocode.encrypt("R" + login + " " + name_original, 'key'), 'UTF-8'))
                     mode = client.recv(4096).decode()
                     clear_console()
                     print_history(0)  # выводим обновлённый диалог
-                    print("Введите сообщение:")
+                    print(input_message)
                     continue
                 elif message == '/back':
                     clear_console()
@@ -236,4 +239,4 @@ if __name__ == '__main__':
                 if mode == "1":
                     clear_console()
                     print_history(0)#выводим обновлённый диалог
-                    print("Введите сообщение:")
+                    print(input_message)

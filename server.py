@@ -1,3 +1,4 @@
+import ssl
 import socket
 import sqlite3
 import threading
@@ -8,16 +9,18 @@ import os.path
 import os
 import time
 import shutil
+db_path = 'resources/sqlite_python.db'
+encoding = 'UTF-8'
 
 class ClientThread(threading.Thread):
-    def __init__(self, clientAddress, clientsocket):  # инициализируем подклчюение
+    def __init__(self, clientAddress, clientsocket):  # инициализируем подключение
         threading.Thread.__init__(self)
         self.csocket = clientsocket
         print("Новое подключение: ", clientAddress)
 
-    def check_unique(self, login): #функция првоерки на уникалдьный логин
+    def check_unique(self, login): #функция првоерки на уникальный логин
         try:
-            sqlite_connection = sqlite3.connect('resources/sqlite_python.db') #получаем даныне с бд
+            sqlite_connection = sqlite3.connect(bd_path) #получаем данные с бд
             cursor = sqlite_connection.cursor()
             cursor.execute('SELECT * FROM users')
             data = cursor.fetchall()
@@ -46,17 +49,17 @@ class ClientThread(threading.Thread):
                 password = msg[msg.find(" ") + 1:]
                 # Поиск данных в БД
                 try:
-                    sqlite_connection = sqlite3.connect('resources/sqlite_python.db')
+                    sqlite_connection = sqlite3.connect(db_path)
                     cursor = sqlite_connection.cursor()
                     cursor.execute('SELECT * FROM users WHERE login=?', (login,))
                     data = cursor.fetchall()
                     cursor.close()
                     if data[0][2] == password: #проверка пароля по бд
-                        self.csocket.send(bytes("1", 'UTF-8'))
+                        self.csocket.send(bytes("1", encoding))
                     else:
-                        self.csocket.send(bytes("0", 'UTF-8'))
+                        self.csocket.send(bytes("0", encoding))
                 except:
-                    self.csocket.send(bytes("-2", 'UTF-8'))
+                    self.csocket.send(bytes("-2", encoding))
                     if sqlite_connection:
                         cursor.close()
             elif msg[0] == "S":  # регестраия, проврека на уникальный логин
@@ -64,14 +67,14 @@ class ClientThread(threading.Thread):
                 login = msg[1:msg.find(" ")]
                 password = msg[msg.find(" ") + 1:]
                 if self.check_unique(login) == 0: #проверка на уникальный логин
-                    self.csocket.send(bytes("-1", 'UTF-8'))
+                    self.csocket.send(bytes("-1", encoding))
                     continue
                 if self.check_unique(login) == -1:
-                    self.csocket.send(bytes("-2", 'UTF-8'))
+                    self.csocket.send(bytes("-2", encoding))
                     continue
                 # Помещение данных в БД
                 try:
-                    sqlite_connection = sqlite3.connect('resources/sqlite_python.db')
+                    sqlite_connection = sqlite3.connect(db_path)
                     cursor = sqlite_connection.cursor()
                     insert_with_param = """INSERT INTO users
                                                   (login, password, date)
@@ -81,9 +84,9 @@ class ClientThread(threading.Thread):
                     cursor.execute(insert_with_param, data_tuple)
                     sqlite_connection.commit()
                     cursor.close()
-                    self.csocket.send(bytes("1", 'UTF-8'))
+                    self.csocket.send(bytes("1", encoding))
                 except:
-                    self.csocket.send(bytes("-2", 'UTF-8'))
+                    self.csocket.send(bytes("-2", encoding))
                     if sqlite_connection:
                         cursor.close()
 
@@ -91,7 +94,7 @@ class ClientThread(threading.Thread):
                 #парс строки с данными от пользователя
                 name = msg[1:msg.find(" ")]
                 login = msg[msg.find(" ") + 1:]
-                sqlite_connection = sqlite3.connect('resources/sqlite_python.db') # получение всех пользователей
+                sqlite_connection = sqlite3.connect(db_path) # получение всех пользователей
                 cursor = sqlite_connection.cursor()
                 cursor.execute('SELECT login FROM users')
                 data = cursor.fetchall()
@@ -101,17 +104,17 @@ class ClientThread(threading.Thread):
                 flag = True
                 for i in data:      # поиск пользователя по бд
                     if i[0] == name:
-                        self.csocket.send(bytes("1", 'UTF-8'))
+                        self.csocket.send(bytes("1", encoding))
                         flag = False
                         if os.path.isfile(f'repo/{login}/{name}.json'): #если есть диалог с этим пользователем отправляем его
                             time.sleep(0.5) #задержка перед отправкой данных, чтобы они не слипались
-                            self.csocket.send(bytes("1", 'UTF-8'))
+                            self.csocket.send(bytes("1", encoding))
                             time.sleep(0.5)
                             with open(f'repo/{login}/{name}.json', "r", encoding='utf8') as file:
                                 load = json.load(file)
                             self.csocket.send(json.dumps({"messages": load}).encode())
                         else:
-                            self.csocket.send(bytes("0", 'UTF-8'))
+                            self.csocket.send(bytes("0", encoding))
                             # load = []
                             # self.csocket.send(json.dumps({"messages": load}).encode())
                         break
@@ -119,7 +122,7 @@ class ClientThread(threading.Thread):
                         flag = True          #и отпраляем пользователю
                         users.append(i[0])
                 if flag:
-                    self.csocket.send(bytes("0", 'UTF-8'))
+                    self.csocket.send(bytes("0", encoding))
                     self.csocket.send(json.dumps({"users": users}).encode())
             elif msg[0] == "M":  # Диалог с пользователем (запись в бд на сервере)
                 #парсим сообщение от пользователя
@@ -171,13 +174,13 @@ class ClientThread(threading.Thread):
                 login = msg[1:msg.find(" ")] #от кого
                 name = msg[msg.find(" ") + 1:]#кому
                 if os.path.isfile(f'repo/{login}/{name}.json'):  # если есть диалог с этим пользователем отправляем его
-                    self.csocket.send(bytes("1", 'UTF-8'))
+                    self.csocket.send(bytes("1", encoding))
                     time.sleep(0.5)                             # задержка перед отправкой данных, чтобы они не слипались
                     with open(f'repo/{login}/{name}.json', "r", encoding='utf8') as file:
                         load = json.load(file)
                     self.csocket.send(json.dumps({"messages": load}).encode())
                 else:
-                    self.csocket.send(bytes("0", 'UTF-8'))
+                    self.csocket.send(bytes("0", encoding))
             elif msg[0] == 'U':
                 from_user = msg[1:msg.find(" ")]  # от кого
                 to_user = msg[msg.find(" ") + 1:]  # кому
@@ -189,10 +192,10 @@ class ClientThread(threading.Thread):
                         load = json.load(file)
                         for i in load:
                             if i.get('massage') == name_file:
-                                self.csocket.send(bytes("0", 'UTF-8'))
+                                self.csocket.send(bytes("0", encoding))
                                 mode = 0
                         if mode == 1:
-                            self.csocket.send(bytes("1", 'UTF-8'))
+                            self.csocket.send(bytes("1", encoding))
                     data = {
                             'author':from_user,
                             'massage': name_file,
@@ -256,20 +259,20 @@ class ClientThread(threading.Thread):
                         load = json.load(file)
                         for i in load:
                             if i.get('massage') == name_file:
-                                self.csocket.send(bytes("1", 'UTF-8'))
+                                self.csocket.send(bytes("1", encoding))
                                 mode = 0
                                 break
                         if mode == 1:
-                            self.csocket.send(bytes("0", 'UTF-8'))
+                            self.csocket.send(bytes("0", encoding))
                             continue
                 else:
-                    self.csocket.send(bytes("1", 'UTF-8'))
+                    self.csocket.send(bytes("1", encoding))
                     continue
                 time.sleep(0.5)
                 file_stats = os.stat(f'repo/{to_user}/' + name_file).st_size/1024
                 if file_stats != int(file_stats):
                     file_stats = int(file_stats)+1
-                self.csocket.send(bytes(f'{file_stats}', 'UTF-8'))
+                self.csocket.send(bytes(f'{file_stats}', encoding))
                 time.sleep(0.5)
                 f = open(f'repo/{to_user}/' + name_file, 'rb')
                 l = f.read(1024)
@@ -286,6 +289,7 @@ if __name__ == '__main__':
 
     server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    server = ssl.wrap_socket(server, server_side = True, keyfile=, certfile=) #Нужно генерировать сертификат и ключ, например с помощью OpenSSL 
     server.bind((LOCALHOST, PORT))
     print("Сервер запущен!")
     while True:

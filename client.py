@@ -1,11 +1,7 @@
-import cryptocode
 import ssl
 import socket
-from threading import Thread
-import threading
 import json
 import os.path
-from datetime import datetime
 import os
 import time
 from tkinter import Tk

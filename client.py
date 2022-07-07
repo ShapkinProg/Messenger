@@ -9,8 +9,14 @@ import os
 import time
 from tkinter import Tk
 from tkinter.filedialog import askopenfilename
+import rsa
+import pickle
 len_field = 60#максиамльная длина строки в чате
 half_len_field = int(len_field/2)#половина строки в чате
+
+
+def send_encode_msg(text, public_key):
+    client.sendall(rsa.encrypt(text.encode(), public_key))
 
 
 def commands():
@@ -70,6 +76,10 @@ if __name__ == '__main__':
     PORT = 1337
     client = socket.socket(socket.AF_INET, socket.SOCK_STREAM) #открывание сокета, нужно будет сделать обёртку для TLS
     client.connect((SERVER, PORT))
+    public_key_from_server = pickle.loads(client.recv(4096))
+    public_key, privat_key = rsa.newkeys(512)
+    key = pickle.dumps(public_key)
+    client.send(key)
     while True: #вход в ситему
         print("[1] Login\n[2]Sign in")
         res = input()
@@ -84,9 +94,8 @@ if __name__ == '__main__':
                     send_login = "L" + login + " " + password
                 elif int(res) == 2: #регестрация
                     send_login = "S" + login + " " + password
-                send_login = cryptocode.encrypt(send_login, 'key') #на всякий случай шифрование перед отправкой
-                client.sendall(bytes(send_login, 'UTF-8'))
-                ans = client.recv(4096).decode() #ждём результат запроса
+                send_encode_msg(send_login, public_key_from_server)
+                ans = rsa.decrypt(client.recv(4096), privat_key).decode() #ждём результат запроса
                 if ans == '1':
                     clear_console()
                     print("Вы успшно вошли")
@@ -113,10 +122,9 @@ if __name__ == '__main__':
         name = input()
         name_original = name
         name = 'F' + name + " " + login
-        name = cryptocode.encrypt(name, 'key') #шифруем и отпарвляем на сервер
-        client.sendall(bytes(name, 'UTF-8'))
+        send_encode_msg(name, public_key_from_server)
 
-        ans = client.recv(4096).decode() #ждём овтета
+        ans = rsa.decrypt(client.recv(4096), privat_key).decode() #ждём овтета
         if ans == "0": #не смогли найти чела точно по имени
             ans = json.loads(client.recv(4096).decode()) #json файл со всеми челиками примерно сопадающими по имени
             if len(ans.get("users")) > 0: #если файл не пустой то печатаем этих пользователей и простим повторить попытку поиска
@@ -127,7 +135,7 @@ if __name__ == '__main__':
                 print("Такого пользователя нет, попытайтесь ещё раз")
         elif ans == "1": #если нашли пользователя по имени
             clear_console()
-            mode = client.recv(4096).decode()
+            mode = rsa.decrypt(client.recv(4096), privat_key).decode()
             if mode == '1': #если есть история диалога
                 print_history(0) #выводим историю
             print("Чтобы узнать команды отправьте /help")
@@ -136,8 +144,9 @@ if __name__ == '__main__':
                 message = input()
                 if message == '/all':
                     clear_console()
-                    client.sendall(bytes(cryptocode.encrypt("R" + login + " " + name_original, 'key'), 'UTF-8'))
-                    mode = client.recv(4096).decode()
+                    msg = "R" + login + " " + name_original
+                    send_encode_msg(msg, public_key_from_server)
+                    mode = rsa.decrypt(client.recv(4096), privat_key).decode()
                     print_history(1)
                     print("Введите сообщение:")
                     continue
@@ -149,10 +158,11 @@ if __name__ == '__main__':
                         name_of_file = path_to_file
                     else:
                         name_of_file = path_to_file[path_to_file.rfind('/')+1:]#парс имени сообщения из пути
-                    client.sendall(bytes(cryptocode.encrypt("U" + login + " "+ name_original, 'key'), 'UTF-8'))
+                    msg = "U" + login + " "+ name_original
+                    send_encode_msg(msg, public_key_from_server)
                     time.sleep(0.5)
-                    client.sendall(bytes(name_of_file, 'UTF-8'))
-                    mode = client.recv(4096).decode()  # 1 - всё ок, 0 - файл не уинкальный
+                    send_encode_msg(name_of_file, public_key_from_server)
+                    mode = rsa.decrypt(client.recv(4096), privat_key).decode()  # 1 - всё ок, 0 - файл не уинкальный
                     if mode == '0':
                         print("Название файла должно быть уникальным")
                         continue
@@ -160,7 +170,7 @@ if __name__ == '__main__':
                     file_stats = os.stat(path_to_file).st_size / 1024 #отпарвляем размер файла(КБ)
                     if file_stats != int(file_stats):
                         file_stats = int(file_stats) + 1
-                    client.send(bytes(f'{file_stats}', 'UTF-8'))
+                    send_encode_msg(f'{file_stats}', public_key_from_server)
                     time.sleep(0.5)
 
                     f = open(path_to_file, "rb")
@@ -173,22 +183,24 @@ if __name__ == '__main__':
                     time.sleep(0.5)
                     f.close()
                     clear_console()
-                    client.sendall(bytes(cryptocode.encrypt("R" + login + " " + name_original, 'key'), 'UTF-8'))
-                    mode = client.recv(4096).decode()
+                    msg = "R" + login + " " + name_original
+                    send_encode_msg(msg, public_key_from_server)
+                    mode = rsa.decrypt(client.recv(4096), privat_key).decode()
                     print_history(0)  # выводим обновлённый диалог
                     print("Файл удачно отправлен")
                     print("Введите сообщение:")
                     continue
                 elif message[:9] == '/download':  #
-                    client.sendall(bytes(cryptocode.encrypt("D" + login + " " + name_original, 'key'), 'UTF-8'))
+                    msg = "D" + login + " " + name_original
+                    send_encode_msg(msg, public_key_from_server)
                     name_of_file = message[message.find(' ') + 1:]
                     time.sleep(0.5)
-                    client.sendall(bytes(name_of_file, 'UTF-8'))
-                    mode = client.recv(4096).decode()
+                    send_encode_msg(name_of_file, public_key_from_server)
+                    mode = rsa.decrypt(client.recv(4096), privat_key).decode()
                     if mode == "0":
                         print("Такого файла нет")
                         continue
-                    size = client.recv(4096).decode()
+                    size = rsa.decrypt(client.recv(4096), privat_key).decode()
                     f = open(name_of_file, 'wb')
                     count = 0
                     while True:
@@ -201,15 +213,17 @@ if __name__ == '__main__':
                             break
                     f.close()
                     clear_console()
-                    client.sendall(bytes(cryptocode.encrypt("R" + login + " " + name_original, 'key'), 'UTF-8'))
-                    mode = client.recv(4096).decode()
+                    msg = "R" + login + " " + name_original
+                    send_encode_msg(msg, public_key_from_server)
+                    mode = rsa.decrypt(client.recv(4096), privat_key).decode()
                     print_history(0)  # выводим обновлённый диалог
                     print("Файл успешно загружен")
                     print("Введите сообщение:")
                     continue
                 elif message == '/update':
-                    client.sendall(bytes(cryptocode.encrypt("R" + login + " " + name_original, 'key'), 'UTF-8'))
-                    mode = client.recv(4096).decode()
+                    msg = "R" + login + " " + name_original
+                    send_encode_msg(msg, public_key_from_server)
+                    mode = rsa.decrypt(client.recv(4096), privat_key).decode()
                     clear_console()
                     print_history(0)  # выводим обновлённый диалог
                     print("Введите сообщение:")
@@ -227,12 +241,13 @@ if __name__ == '__main__':
                 elif message[0] == '/':
                     print("Некорректная команда, для получения списка всех команд используйте /help")
                 info = "M" + login + " " + name_original
-                info = cryptocode.encrypt(info, 'key')  # шифруем и отпарвляем на сервер
-                client.sendall(bytes(info, 'UTF-8')) #отпаряем данные кто и кому
-                client.sendall(bytes(message, 'UTF-8'))#отпарляем сообщение
+                send_encode_msg(info, public_key_from_server) #отпаряем данные кто и кому
                 time.sleep(0.5)
-                client.sendall(bytes(cryptocode.encrypt("R"+login+" "+name_original, 'key'), 'UTF-8'))#отпарялем запрос на обноваление диалога
-                mode = client.recv(4096).decode() #ответ 1 - есть диалог 0 - диалог пустой
+                send_encode_msg(message, public_key_from_server) #отпарляем сообщение
+                time.sleep(0.5)
+                msg = "R"+login+" "+name_original
+                send_encode_msg(msg, public_key_from_server)#отпарялем запрос на обноваление диалога
+                mode = rsa.decrypt(client.recv(4096), privat_key).decode() #ответ 1 - есть диалог 0 - диалог пустой
                 if mode == "1":
                     clear_console()
                     print_history(0)#выводим обновлённый диалог
